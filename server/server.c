@@ -9,11 +9,11 @@
 #include <signal.h>
 #include "../lib/protocol.h"
 #include "./server_lib/account.h"
-#include "./server_lib/database.h"
+#include "../lib/database.h"
 
 #define PORT 8080
 #define LOCALHOST "127.0.0.1"
-#define MAX_CLIENTS 100
+#define MAX_CLIENTS 9
 #define BUFFER_SIZE 1024
 
 Database db;
@@ -152,7 +152,7 @@ int main()
             // Login request
             if (buffer[0] == LOGIN)
             {
-                buffer[0] = authenticateUser(&db, buffer);
+                buffer[0] = authenticateUser(&db, buffer, &users[i]);
                 if (buffer[0] == LOGIN_SUCCESS)
                 {
                     send(new_socket, buffer, BUFFER_SIZE, 0);
@@ -197,7 +197,7 @@ int main()
 
             if (buffer[0] == LOGIN)
             {
-                buffer[0] = authenticateUser(&db, buffer);
+                buffer[0] = authenticateUser(&db, buffer, &users[i]);
                 if (buffer[0] == LOGIN_SUCCESS)
                 {
                     send(new_socket, buffer, BUFFER_SIZE, 0);

@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include "account.h"
 #include "../../lib/protocol.h"
-#include "database.h"
+#include "../../lib/database.h"
 #include "/opt/lampp/include/mysql.h"
 
 #define USERNAME_SIZE 50
 #define PASSWORD_SIZE 50
 
-int authenticateUser(Database *db, char *buffer)
+int authenticateUser(Database *db, char *buffer, User *user)
 {
     MYSQL *conn = getDatabaseConnection(db);
     MYSQL_RES *res;
@@ -72,6 +72,9 @@ int authenticateUser(Database *db, char *buffer)
             fprintf(stderr, "Update last_login failed: %s\n", mysql_error(conn));
             return LOGIN_FAILURE;
         }
+
+        // Cập nhật username vào user
+        strcpy(user->username, username);
     }
 
     return auth_status;

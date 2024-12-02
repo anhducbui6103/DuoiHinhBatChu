@@ -13,15 +13,18 @@
 #define USERNAME_SIZE 100
 #define PASSWORD_SIZE 100
 
+int opt_choice;
+char buffer[BUFFER_SIZE];
+char username[USERNAME_SIZE];
+char password[PASSWORD_SIZE];
+
+void authenticateFunc();
+
 int main()
 {
     int sockfd, max_sd, activity;
     struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
-    char username[USERNAME_SIZE];
-    char password[PASSWORD_SIZE];
     fd_set readfds;
-    int opt_choice;
 
     // Create a socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -77,31 +80,8 @@ int main()
             {
                 do
                 {
-                    printf("1. Login\n2. Register\nYour choice:\n");
-                    scanf("%d", &opt_choice);
-                    getchar();
-                    if (opt_choice == 1)
-                    {
-                        buffer[0] = LOGIN;
-                    }
-                    else if (opt_choice == 2)
-                    {
-                        buffer[0] = SIGNUP;
-                    }
-                    if (opt_choice == 1 || opt_choice == 2)
-                    {
-                        strcat(buffer, " // ");
-                        printf("Username:\n");
-                        fgets(username, USERNAME_SIZE, stdin);
-                        username[strcspn(username, "\n")] = 0;
-                        strcat(buffer, username);
-                        strcat(buffer, " // ");
-                        printf("Password:\n");
-                        fgets(password, PASSWORD_SIZE, stdin);
-                        password[strcspn(password, "\n")] = 0;
-                        strcat(buffer, password);
-                        send(sockfd, buffer, BUFFER_SIZE, 0);
-                    }
+                    authenticateFunc();
+                    send(sockfd, buffer, BUFFER_SIZE, 0);
                 } while (opt_choice < 1 || opt_choice > 2);
             }
             else if (buffer[0] == LOGIN_SUCCESS)
@@ -134,4 +114,32 @@ int main()
     // Clean up
     close(sockfd);
     return 0;
+}
+
+void authenticateFunc()
+{
+    printf("1. Login\n2. Register\nYour choice:\n");
+    scanf("%d", &opt_choice);
+    getchar();
+    if (opt_choice == 1)
+    {
+        buffer[0] = LOGIN;
+    }
+    else if (opt_choice == 2)
+    {
+        buffer[0] = SIGNUP;
+    }
+    if (opt_choice == 1 || opt_choice == 2)
+    {
+        strcat(buffer, " // ");
+        printf("Username:\n");
+        fgets(username, USERNAME_SIZE, stdin);
+        username[strcspn(username, "\n")] = 0;
+        strcat(buffer, username);
+        strcat(buffer, " // ");
+        printf("Password:\n");
+        fgets(password, PASSWORD_SIZE, stdin);
+        password[strcspn(password, "\n")] = 0;
+        strcat(buffer, password);
+    }
 }
