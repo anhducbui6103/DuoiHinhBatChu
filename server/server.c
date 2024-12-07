@@ -10,6 +10,7 @@
 #include "../lib/protocol.h"
 #include "./server_lib/account.h"
 #include "../lib/database.h"
+#include "./server_lib/room.h"
 
 #define PORT 8080
 #define LOCALHOST "127.0.0.1"
@@ -17,10 +18,19 @@
 #define BUFFER_SIZE 1024
 
 Database db;
+User users[MAX_CLIENTS];
+Room rooms[MAX_ROOMS];
 
 void handleSigint(int sig)
 {
     printf("\nServer shutting down...\n");
+
+    // Make all current users leave all rooms
+    for (int j = 0; j < MAX_CLIENTS; j++)
+    {
+        leaveRoom(rooms, &users[j], &db);
+    }
+
     disconnectDatabase(&db); // Đóng kết nối đến database
     exit(0);                 // Thoát chương trình
 }
@@ -32,7 +42,6 @@ int main()
     int opt = 1;
     fd_set readfds;
     char buffer[BUFFER_SIZE];
-    User users[MAX_CLIENTS];
 
     // Đăng ký handler cho SIGINT
     signal(SIGINT, handleSigint);
@@ -47,6 +56,13 @@ int main()
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
     {
         perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set socket options
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+    {
+        perror("setsockopt");
         exit(EXIT_FAILURE);
     }
 
@@ -70,7 +86,10 @@ int main()
     }
 
     // Open connect to database
-    connectToDatabase(&db, LOCALHOST, "root", NULL, "duoihinhbatchu", 3306);
+    connectToDatabase(&db, LOCALHOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME, 3306);
+
+    // Initialize rooms
+    initRooms(rooms);
 
     printf("Listening on port %d...\n", PORT);
 
@@ -189,24 +208,58 @@ int main()
                     getpeername(sd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
                     printf("Client disconnected, IP: %s, port: %d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 
+                    // Delete user_room information in database
+                    leaveRoom(rooms, &users[i], &db);
+
                     // Close the socket and mark as 0 in list for reuse
                     close(sd);
-                    users[i].socket_fd = 0;
+                    freeUser(&users[i]);
                 }
-            }
+                else
+                {
+                    if (buffer[0] == LOGIN)
+                    {
+                        buffer[0] = authenticateUser(&db, buffer, &users[i]);
+                        if (buffer[0] == LOGIN_SUCCESS)
+                        {
+                            send(new_socket, buffer, BUFFER_SIZE, 0);
+                        }
+                        else if (buffer[0] == LOGIN_FAILURE)
+                        {
+                            send(new_socket, buffer, BUFFER_SIZE, 0);
+                            buffer[0] = AUTHENTICATE;
+                            send(new_socket, buffer, BUFFER_SIZE, 0);
+                        }
+                    }
 
-            if (buffer[0] == LOGIN)
-            {
-                buffer[0] = authenticateUser(&db, buffer, &users[i]);
-                if (buffer[0] == LOGIN_SUCCESS)
-                {
-                    send(new_socket, buffer, BUFFER_SIZE, 0);
-                }
-                else if (buffer[0] == LOGIN_FAILURE)
-                {
-                    send(new_socket, buffer, BUFFER_SIZE, 0);
-                    buffer[0] = AUTHENTICATE;
-                    send(new_socket, buffer, BUFFER_SIZE, 0);
+                    else if (buffer[0] == SIGNUP)
+                    {
+                        buffer[0] = signUpUser(&db, buffer);
+                        send(new_socket, buffer, BUFFER_SIZE, 0);
+                        buffer[0] = AUTHENTICATE;
+                        send(new_socket, buffer, BUFFER_SIZE, 0);
+                    }
+
+                    else if (buffer[0] == JOIN_ROOM)
+                    {
+                        int assigned_room = -1;
+                        if (joinRoom(rooms, &users[i], &assigned_room, &db) == 0)
+                        {
+                            buffer[0] = JOIN_ROOM_SUCCESS;
+                            send(users[i].socket_fd, buffer, strlen(buffer), 0);
+                            printf("User %d assigned to room%d\n", users[i].id, assigned_room);
+                        }
+                        else
+                        {
+                            buffer[0] = JOIN_ROOM_FAILURE;
+                            send(users[i].socket_fd, buffer, strlen(buffer), 0);
+                        }
+                    }
+
+                    else if (buffer[0] == OUT_ROOM)
+                    {
+                        leaveRoom(rooms, &users[i], &db);
+                    }
                 }
             }
         }

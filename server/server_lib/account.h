@@ -5,13 +5,15 @@
 
 typedef struct User
 {
+    int id;
     char username[20];
-    int room;
+    int room_id;
     int state;
     int score;
     int socket_fd;
 } User;
 
+void freeUser(User *user);
 int authenticateUser(Database *db, char *buffer, User *user);
 int userExists(Database *db, const char *username);
 int signUpUser(Database *db, char *buffer);

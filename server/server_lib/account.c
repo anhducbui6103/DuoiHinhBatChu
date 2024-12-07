@@ -9,6 +9,19 @@
 #define USERNAME_SIZE 50
 #define PASSWORD_SIZE 50
 
+void freeUser(User *user)
+{
+    if (user == NULL)
+        return;
+
+    user->id = 0;
+    memset(user->username, 0, sizeof(user->username));
+    user->room_id = 0;
+    user->state = 0;
+    user->score = 0;
+    user->socket_fd = 0;
+}
+
 int authenticateUser(Database *db, char *buffer, User *user)
 {
     MYSQL *conn = getDatabaseConnection(db);
@@ -41,7 +54,7 @@ int authenticateUser(Database *db, char *buffer, User *user)
 
     // Truy vấn cơ sở dữ liệu
     snprintf(query, sizeof(query),
-             "SELECT * FROM users WHERE username='%s' AND password='%s'",
+             "SELECT id, username FROM users WHERE username='%s' AND password='%s'",
              username, password);
 
     if (mysql_query(conn, query))
@@ -57,26 +70,28 @@ int authenticateUser(Database *db, char *buffer, User *user)
         return LOGIN_FAILURE;
     }
 
-    int auth_status = (mysql_num_rows(res) > 0) ? LOGIN_SUCCESS : LOGIN_FAILURE;
-    mysql_free_result(res);
-
-    // Nếu xác thực thành công, cập nhật last_login
-    if (auth_status == LOGIN_SUCCESS)
+    int auth_status = LOGIN_FAILURE;
+    if ((row = mysql_fetch_row(res)) != NULL)
     {
+        // Lấy thông tin `id` và `username` từ kết quả
+        user->id = atoi(row[0]); // Lấy id từ kết quả truy vấn
+        strcpy(user->username, row[1]);
+
+        auth_status = LOGIN_SUCCESS;
+
+        // Cập nhật trường `last_login` trong bảng users
         snprintf(query, sizeof(query),
-                 "UPDATE users SET last_login = NOW() WHERE username='%s' AND password='%s'",
-                 username, password);
+                 "UPDATE users SET last_login = NOW() WHERE id=%d",
+                 user->id);
 
         if (mysql_query(conn, query))
         {
             fprintf(stderr, "Update last_login failed: %s\n", mysql_error(conn));
-            return LOGIN_FAILURE;
+            auth_status = LOGIN_FAILURE;
         }
-
-        // Cập nhật username vào user
-        strcpy(user->username, username);
     }
 
+    mysql_free_result(res);
     return auth_status;
 }
 

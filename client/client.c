@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 #include <errno.h>
+#include <signal.h>
 #include "../lib/protocol.h"
 
 #define PORT 8080
@@ -13,18 +14,23 @@
 #define USERNAME_SIZE 100
 #define PASSWORD_SIZE 100
 
+int sockfd;
 int opt_choice;
 char buffer[BUFFER_SIZE];
 char username[USERNAME_SIZE];
 char password[PASSWORD_SIZE];
 
 void authenticateFunc();
+void handleSigint(int sig);
 
 int main()
 {
-    int sockfd, max_sd, activity;
+    int max_sd, activity;
     struct sockaddr_in server_addr;
     fd_set readfds;
+
+    // Đăng ký handler cho SIGINT
+    signal(SIGINT, handleSigint);
 
     // Create a socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -86,7 +92,10 @@ int main()
             }
             else if (buffer[0] == LOGIN_SUCCESS)
             {
-                printf("Login success\n");
+                printf("Login success! Press any key to start game!\n");
+                getchar();
+                buffer[0] = JOIN_ROOM;
+                send(sockfd, buffer, BUFFER_SIZE, 0);
             }
             else if (buffer[0] == LOGIN_FAILURE)
             {
@@ -99,6 +108,14 @@ int main()
             else if (buffer[0] == SIGNUP_FAILURE)
             {
                 printf("Signup failed\n");
+            }
+            else if (buffer[0] == JOIN_ROOM_SUCCESS)
+            {
+                printf("Join success\n");
+            }
+            else if (buffer[0] == JOIN_ROOM_FAILURE)
+            {
+                printf("Join failed\n");
             }
         }
 
@@ -142,4 +159,10 @@ void authenticateFunc()
         password[strcspn(password, "\n")] = 0;
         strcat(buffer, password);
     }
+}
+
+void handleSigint(int sig)
+{
+    printf("\nExiting...\n");
+    exit(0);
 }

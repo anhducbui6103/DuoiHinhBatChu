@@ -10,9 +10,9 @@
 #define AUTHENTICATE 0x07
 
 #define JOIN_ROOM 0x21
-// #define OUT_ROOM 0x22
-// #define READY 0x23
-// #define UNREADY 0x24
+#define JOIN_ROOM_SUCCESS 0x22
+#define JOIN_ROOM_FAILURE 0x23
+#define OUT_ROOM 0x24
 
 #define QUESTION 0x31
 #define BELL_RING 0x32

@@ -3,6 +3,10 @@
 
 #include "/opt/lampp/include/mysql.h"
 
+#define DATABASE_NAME "duoihinhbatchu"
+#define DATABASE_USER "root"
+#define DATABASE_PASSWORD NULL
+
 // Cấu trúc để lưu kết nối database
 typedef struct
 {
