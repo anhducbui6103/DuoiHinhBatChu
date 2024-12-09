@@ -1,4 +1,6 @@
 ﻿cl : command line  warning D9035: option 'Zc:forScope-' has been deprecated and will be removed in a future release
   GSPlay.cpp
+  GameStateBase.cpp
+  Generating Code...
   SDL.vcxproj -> D:\Workspace\DHBC\x64\Debug\SDL.exe
   0 File(s) copied
