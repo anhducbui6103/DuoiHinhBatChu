@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "iostream": "cpp"
+        "sdl_ttf.h": "c",
+        "sdl_image.h": "c"
     }
 }
