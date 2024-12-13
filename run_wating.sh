@@ -1,0 +1,1 @@
+gcc -o wating Wating.c `sdl2-config --cflags --libs` -lSDL2_ttf && ./wating
