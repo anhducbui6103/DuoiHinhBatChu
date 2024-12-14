@@ -10,6 +10,16 @@ void initRooms(Room rooms[])
     {
         rooms[i].id = i + 1;       // Phòng ID bắt đầu từ 1
         rooms[i].player_count = 0; // Mặc định số người chơi là 0
+        rooms[i].status = ROOM_WAITING;
+        memset(rooms[i].players, 0, sizeof(rooms[i].players));
+    }
+}
+
+void checkRoomPlayers(Room *room)
+{
+    if (room->player_count == MAX_PLAYERS_PER_ROOM) // Kiểm tra nếu phòng đủ 3 người chơi
+    {
+        room->status = ROOM_PLAYING; // Cập nhật trạng thái phòng
     }
 }
 
@@ -18,8 +28,9 @@ int joinRoom(Room rooms[], User *user, int *assigned_room, Database *db)
 {
     for (int i = 0; i < MAX_ROOMS; i++)
     {
-        if (rooms[i].player_count < MAX_PLAYERS_PER_ROOM)
+        if (rooms[i].status == ROOM_WAITING && rooms[i].player_count < MAX_PLAYERS_PER_ROOM)
         {
+            rooms[i].players[rooms[i].player_count] = *user;
             rooms[i].player_count++;
             user->room_id = rooms[i].id;
             *assigned_room = rooms[i].id;
@@ -38,6 +49,9 @@ int joinRoom(Room rooms[], User *user, int *assigned_room, Database *db)
                 return -1; // Lỗi ghi vào CSDL
             }
 
+            // Kiểm tra trạng thái phòng
+            checkRoomPlayers(&rooms[i]);
+
             return 0; // Thành công
         }
     }
@@ -55,8 +69,24 @@ void leaveRoom(Room rooms[], User *user, Database *db)
         return;
     }
 
+    Room *room = &rooms[room_id - 1];
+
     // Giảm số lượng người chơi trong phòng
-    rooms[room_id - 1].player_count--;
+    if (room->player_count > 0)
+    {
+        room->player_count--;
+    }
+
+    // Xóa người chơi khỏi danh sách players
+    for (int i = 0; i < MAX_PLAYERS_PER_ROOM; i++)
+    {
+        if (room->players[i].id == user->id)
+        {
+            memset(&room->players[i], 0, sizeof(User));
+            break;
+        }
+    }
+
     // printf("room %d has %d users\n", rooms[room_id - 1].id, rooms[room_id - 1].player_count);
 
     // Xóa thông tin người chơi khỏi cơ sở dữ liệu
@@ -70,4 +100,7 @@ void leaveRoom(Room rooms[], User *user, Database *db)
     {
         fprintf(stderr, "Database error: %s\n", mysql_error(conn));
     }
+
+    // Reset room_id trong user
+    user->room_id = 0;
 }
