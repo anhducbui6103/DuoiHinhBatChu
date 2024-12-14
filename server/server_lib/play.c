@@ -186,3 +186,28 @@ int checkAnswer(char *question_id, char *userAnswer, Database *db)
     // Compare answers
     return (strcmp(correctAnswer, lowerUserAnswer) == 0) ? 1 : 0;
 }
+
+void sendScoreUpdate(Room *room, char *buffer)
+{
+    // Clear buffer and set message type
+    memset(buffer, 0, BUFFER_SIZE);
+    buffer[0] = SCORE_UPDATE;
+
+    // Add all players' scores to the buffer
+    char score_info[256];
+    for (int i = 0; i < room->player_count; i++)
+    {
+        if (i > 0)
+            strcat(buffer, " // ");
+        snprintf(score_info, sizeof(score_info), "%s,%d",
+                 room->players[i].username,
+                 room->players[i].score);
+        strcat(buffer, score_info);
+    }
+
+    // Send the complete buffer to all players
+    for (int i = 0; i < room->player_count; i++)
+    {
+        send(room->players[i].socket_fd, buffer, BUFFER_SIZE, 0);
+    }
+}

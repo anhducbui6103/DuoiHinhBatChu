@@ -30,5 +30,6 @@
 #define GIVE_UP 0x41
 #define BELL_RING_AVAILABLE 0x42
 #define BELL_RING_UNAVAILABLE 0x43
+#define SCORE_UPDATE 0x44
 
 #endif

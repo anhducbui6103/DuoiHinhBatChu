@@ -4,7 +4,7 @@
 #include "room.h"
 #include "../../lib/protocol.h"
 
-#define QUESTION_COUNT 10
+#define QUESTION_COUNT 3
 #define QUESTION_ID_SIZE 10
 #define HINT_SIZE 10
 #define ANSWER_SIZE 1024
@@ -22,5 +22,6 @@ void createQuestionBuffer(Question *question, char *buffer);
 void sendQuestion(Room *room, char *buffer);
 void setBellStatus(Room *room, int status, char *buffer);
 int checkAnswer(char *question_id, char *userAnswer, Database *db);
+void sendScoreUpdate(Room *room, char *buffer);
 
 #endif
