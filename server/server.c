@@ -7,19 +7,29 @@
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/socket.h>
 #include "../lib/protocol.h"
-#include "./server_lib/account.h"
+#include "server_lib/account.h"
 #include "../lib/database.h"
-#include "./server_lib/room.h"
+#include "server_lib/room.h"
+#include "server_lib/play.h"
 
 #define PORT 8080
 #define LOCALHOST "127.0.0.1"
 #define MAX_CLIENTS 9
 #define BUFFER_SIZE 1024
+#define CHAT_BUFFER_SIZE 256
 
 Database db;
 User users[MAX_CLIENTS];
 Room rooms[MAX_ROOMS];
+Question questions[QUESTION_COUNT];
+char chat_buffer[CHAT_BUFFER_SIZE];
+int current_question;
+int assigned_room = -1;
 
 void handleSigint(int sig)
 {
@@ -35,6 +45,14 @@ void handleSigint(int sig)
     exit(0);                 // Thoát chương trình
 }
 
+// Signal handler to prevent zombie processes
+void handleSigchld(int sig)
+{
+    (void)sig; // Ignore unused parameter warning
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+        ;
+}
+
 int main()
 {
     int server_fd, new_socket, max_sd, activity, i;
@@ -42,9 +60,13 @@ int main()
     int opt = 1;
     fd_set readfds;
     char buffer[BUFFER_SIZE];
+    pid_t pid;
 
     // Đăng ký handler cho SIGINT
     signal(SIGINT, handleSigint);
+
+    // Đăng ký handler cho SIGCHLD
+    signal(SIGCHLD, handleSigchld);
 
     // Initialize client sockets to 0
     for (i = 0; i < MAX_CLIENTS; i++)
@@ -242,12 +264,23 @@ int main()
 
                     else if (buffer[0] == JOIN_ROOM)
                     {
-                        int assigned_room = -1;
                         if (joinRoom(rooms, &users[i], &assigned_room, &db) == 0)
                         {
                             buffer[0] = JOIN_ROOM_SUCCESS;
                             send(users[i].socket_fd, buffer, strlen(buffer), 0);
-                            printf("User %d assigned to room%d\n", users[i].id, assigned_room);
+                            printf("User %s assigned to room%d\n", users[i].username, assigned_room);
+
+                            if (rooms[assigned_room - 1].status == ROOM_PLAYING)
+                            {
+                                initQuestions(questions, &db);
+                                current_question = 0;
+                                startGame(&rooms[assigned_room - 1]);
+                                setBellStatus(&rooms[assigned_room - 1], BELL_RING_AVAILABLE, buffer);
+                                createQuestionBuffer(&questions[current_question], buffer);
+                                sendQuestion(&rooms[assigned_room - 1], buffer);
+                                sendScoreUpdate(&rooms[assigned_room - 1], buffer);
+                                current_question++;
+                            }
                         }
                         else
                         {
@@ -260,11 +293,135 @@ int main()
                     {
                         leaveRoom(rooms, &users[i], &db);
                     }
+
+                    else if (buffer[0] == BELL_RING)
+                    {
+                        printf("Bell ring from user %s\n", users[i].username);
+
+                        // Find the room the user is in
+                        Room *current_room = &rooms[users[i].room_id - 1];
+
+                        // Send BELL_RING_UNAVAILABLE to other users in the room
+                        buffer[0] = BELL_RING_UNAVAILABLE;
+                        for (int j = 0; j < MAX_PLAYERS_PER_ROOM; j++)
+                        {
+                            if (current_room->players[j].socket_fd != 0 &&
+                                current_room->players[j].socket_fd != users[i].socket_fd)
+                            {
+                                send(current_room->players[j].socket_fd, buffer, BUFFER_SIZE, 0);
+                            }
+                        }
+
+                        // Send ANSWER_REQUEST to the user who rang the bell
+                        buffer[0] = ANSWER_REQUEST;
+                        send(users[i].socket_fd, buffer, BUFFER_SIZE, 0);
+                    }
+                    else if (buffer[0] == CHAT_MESSAGE)
+                    {
+                        // Lấy nội dung tin nhắn từ buffer
+                        char *message = buffer + 1;
+
+                        // Xác định phòng mà người dùng đang tham gia
+                        Room *current_room = &rooms[users[i].room_id - 1];
+
+                        // Chuẩn bị gói tin broadcast
+                        memset(chat_buffer, 0, CHAT_BUFFER_SIZE);
+                        chat_buffer[0] = CHAT_BROADCAST;
+                        snprintf(chat_buffer + 1, CHAT_BUFFER_SIZE - 1, "%s: %s", users[i].username, message);
+
+                        // Gửi tin nhắn đến tất cả các client trong phòng
+                        for (int j = 0; j < current_room->player_count; j++)
+                        {
+                            if (current_room->players[j].socket_fd != 0)
+                            {
+                                send(current_room->players[j].socket_fd, chat_buffer, CHAT_BUFFER_SIZE, 0);
+                            }
+                        }
+                    }
+
+                    else if (buffer[0] == ANSWER)
+                    {
+                        // Find the room the user is in
+                        Room *current_room = &rooms[users[i].room_id - 1];
+
+                        // Get the answer from the buffer
+                        char answer[256] = {0};        // Buffer for the answer
+                        char *p = strchr(buffer, '/'); // Find first '/'
+                        if (p != NULL)
+                        {
+                            p = strchr(p + 1, '/'); // Find second '/'
+                            if (p != NULL)
+                            {
+                                // Skip the " // " separator
+                                p += 2;
+                                strncpy(answer, p, sizeof(answer) - 1);
+                                printf("Answer from user %s: %s\n", users[i].username, answer);
+
+                                // Check if the answer is correct
+                                if (checkAnswer(questions[current_question - 1].id, answer, &db) == 1)
+                                {
+                                    buffer[0] = CORRECT;
+                                    // Update score for both User and Room's player
+                                    users[i].score += 10;
+                                    // Update score in the room's player array
+                                    for (int j = 0; j < current_room->player_count; j++)
+                                    {
+                                        if (strcmp(current_room->players[j].username, users[i].username) == 0)
+                                        {
+                                            current_room->players[j].score = users[i].score;
+                                            break;
+                                        }
+                                    }
+                                    send(users[i].socket_fd, buffer, BUFFER_SIZE, 0);
+
+                                    // Send score update before sending next question
+                                    sendScoreUpdate(current_room, buffer);
+
+                                    if (current_question >= QUESTION_COUNT)
+                                    {
+                                        // Send FINISH message to all players in the room
+                                        for (int j = 0; j < current_room->player_count; j++)
+                                        {
+                                            memset(buffer, 0, BUFFER_SIZE);
+                                            buffer[0] = FINISH;
+                                            strcat(buffer, " // ");
+                                            char score_str[20];                                           // Buffer for score string
+                                            snprintf(score_str, sizeof(score_str), "%d", users[j].score); // Convert int to string
+                                            strcat(buffer, score_str);
+                                            send(current_room->players[j].socket_fd, buffer, BUFFER_SIZE, 0);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Send the next question
+                                        setBellStatus(current_room, BELL_RING_AVAILABLE, buffer);
+                                        createQuestionBuffer(&questions[current_question], buffer);
+                                        sendQuestion(current_room, buffer);
+                                        current_question++;
+                                    }
+                                }
+                                else
+                                {
+                                    buffer[0] = INCORRECT;
+                                    send(users[i].socket_fd, buffer, BUFFER_SIZE, 0);
+                                    // Set the bell status to available
+                                    setBellStatus(current_room, BELL_RING_AVAILABLE, buffer);
+                                    buffer[0] = ANSWER_WAITING;
+                                    for (int i = 0; i < current_room->player_count; i++)
+                                    {
+                                        send(current_room->players[i].socket_fd, buffer, BUFFER_SIZE, 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     disconnectDatabase(&db);
+    close(new_socket);
+    close(server_fd);
     return 0;
 }
