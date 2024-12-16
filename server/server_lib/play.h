@@ -4,7 +4,7 @@
 #include "room.h"
 #include "../../lib/protocol.h"
 
-#define QUESTION_COUNT 3
+#define QUESTION_COUNT 10
 #define QUESTION_ID_SIZE 10
 #define HINT_SIZE 10
 #define ANSWER_SIZE 1024

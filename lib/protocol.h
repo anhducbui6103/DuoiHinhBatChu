@@ -32,4 +32,8 @@
 #define BELL_RING_UNAVAILABLE 0x43
 #define SCORE_UPDATE 0x44
 
+#define CHAT_MESSAGE 0x51 
+#define CHAT_BROADCAST 0x52 
+
+
 #endif

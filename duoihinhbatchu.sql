@@ -2,8 +2,8 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Generation Time: Nov 21, 2024 at 07:33 AM
+-- Host: localhost
+-- Generation Time: Dec 15, 2024 at 03:11 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `test`
+-- Database: `duoihinhbatchu`
 --
 
 -- --------------------------------------------------------
@@ -159,6 +159,17 @@ CREATE TABLE `rooms` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `rooms`
+--
+
+INSERT INTO `rooms` (`id`, `room_name`, `created_at`) VALUES
+(1, 'room1', '2024-12-14 23:37:42'),
+(2, 'room2', '2024-12-14 23:51:10'),
+(3, 'room3', '2024-12-14 23:58:24'),
+(4, 'room4', '2024-12-14 23:58:24'),
+(5, 'room5', '2024-12-14 23:58:24');
+
 -- --------------------------------------------------------
 
 --
@@ -168,10 +179,22 @@ CREATE TABLE `rooms` (
 CREATE TABLE `users` (
   `id` int(11) NOT NULL,
   `username` varchar(255) NOT NULL,
-  `password_hash` varchar(255) NOT NULL,
+  `password` varchar(255) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `last_login` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `users`
+--
+
+INSERT INTO `users` (`id`, `username`, `password`, `created_at`, `last_login`) VALUES
+(1, 'admin', '123', '2024-12-14 23:34:44', '2024-12-15 02:02:08'),
+(2, 'abcd', '123', '2024-12-14 23:34:57', '2024-12-15 03:44:03'),
+(3, 'quan', '123', '2024-12-14 23:35:18', '2024-12-15 04:01:35'),
+(4, 'viet', '123', '2024-12-14 23:35:28', '2024-12-15 04:01:46'),
+(5, 'linh', '123', '2024-12-15 03:34:32', '2024-12-15 03:34:41'),
+(6, 'hoan', 'abc', '2024-12-15 03:46:24', '2024-12-15 04:02:00');
 
 -- --------------------------------------------------------
 
@@ -271,13 +294,13 @@ ALTER TABLE `questions`
 -- AUTO_INCREMENT for table `rooms`
 --
 ALTER TABLE `rooms`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- Constraints for dumped tables

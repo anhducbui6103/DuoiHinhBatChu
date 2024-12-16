@@ -21,11 +21,13 @@
 #define LOCALHOST "127.0.0.1"
 #define MAX_CLIENTS 9
 #define BUFFER_SIZE 1024
+#define CHAT_BUFFER_SIZE 256
 
 Database db;
 User users[MAX_CLIENTS];
 Room rooms[MAX_ROOMS];
 Question questions[QUESTION_COUNT];
+char chat_buffer[CHAT_BUFFER_SIZE];
 int current_question;
 int assigned_room = -1;
 
@@ -266,7 +268,7 @@ int main()
                         {
                             buffer[0] = JOIN_ROOM_SUCCESS;
                             send(users[i].socket_fd, buffer, strlen(buffer), 0);
-                            printf("User %d assigned to room%d\n", users[i].id, assigned_room);
+                            printf("User %s assigned to room%d\n", users[i].username, assigned_room);
 
                             if (rooms[assigned_room - 1].status == ROOM_PLAYING)
                             {
@@ -313,6 +315,28 @@ int main()
                         // Send ANSWER_REQUEST to the user who rang the bell
                         buffer[0] = ANSWER_REQUEST;
                         send(users[i].socket_fd, buffer, BUFFER_SIZE, 0);
+                    }
+                    else if (buffer[0] == CHAT_MESSAGE)
+                    {
+                        // Lấy nội dung tin nhắn từ buffer
+                        char *message = buffer + 1;
+
+                        // Xác định phòng mà người dùng đang tham gia
+                        Room *current_room = &rooms[users[i].room_id - 1];
+
+                        // Chuẩn bị gói tin broadcast
+                        memset(chat_buffer, 0, CHAT_BUFFER_SIZE);
+                        chat_buffer[0] = CHAT_BROADCAST;
+                        snprintf(chat_buffer + 1, CHAT_BUFFER_SIZE - 1, "%s: %s", users[i].username, message);
+
+                        // Gửi tin nhắn đến tất cả các client trong phòng
+                        for (int j = 0; j < current_room->player_count; j++)
+                        {
+                            if (current_room->players[j].socket_fd != 0)
+                            {
+                                send(current_room->players[j].socket_fd, chat_buffer, CHAT_BUFFER_SIZE, 0);
+                            }
+                        }
                     }
 
                     else if (buffer[0] == ANSWER)

@@ -53,6 +53,16 @@ typedef struct
 
 typedef struct
 {
+    SDL_Rect chatBoxRect;
+    TextInput chatInput;
+    Button sendButton;
+    char chatMessages[10][256];
+    int chatMessageCount;
+    char currentInput[256];
+} ChatUI;
+
+typedef struct
+{
     SDL_Window *window;
     SDL_Renderer *renderer;
     TTF_Font *font;
@@ -60,6 +70,7 @@ typedef struct
     TextInput answerInput;
     Button bellButton;
     Button answerButton;
+    ChatUI chatUI;
     char hint[HINT_SIZE];
     char currentScore[20];
     char playerList[3][256]; // For 3 players' info
@@ -84,6 +95,7 @@ void showDialog(const char *message);
 void initGameUI(GameUI *ui);
 void renderGameUI(GameUI *ui);
 void handleGameUI();
+void renderChatUI(GameUI *ui);
 void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *font, const char *buffer);
 
 int main()
@@ -92,6 +104,13 @@ int main()
     struct sockaddr_in server_addr;
     fd_set readfds;
     struct timeval tv;
+
+    if (TTF_Init() == -1)
+    {
+        printf("TTF_Init Error: %s\n", TTF_GetError());
+        SDL_Quit();
+        return 1;
+    }
 
     // Đăng ký handler cho SIGINT
     signal(SIGINT, handleSigint);
@@ -212,6 +231,14 @@ int main()
                 TTF_Quit();
                 IMG_Quit();
                 SDL_Quit();
+            }
+            else if (buffer[0] == CHAT_BROADCAST)
+            {
+                // Lấy tin nhắn từ buffer
+                char *message = buffer + 1;
+
+                // Thêm tin nhắn vào danh sách hiển thị
+                printf("%s\n", message);
             }
             else if (buffer[0] == QUESTION)
             {
@@ -356,7 +383,7 @@ void authenticateFunc()
     }
 
     // Create window and renderer
-    window = SDL_CreateWindow("Login/Signup",
+    window = SDL_CreateWindow("Duoi Hinh Bat Chu",
                               SDL_WINDOWPOS_UNDEFINED,
                               SDL_WINDOWPOS_UNDEFINED,
                               960, 540,
@@ -376,7 +403,7 @@ void authenticateFunc()
         .rect = {480 - 100, 270, 200, 40},
         .text = "",
         .isSelected = false,
-        .isPassword = true};
+        .isPassword = false};
 
     // Create buttons
     Button loginButton = {
@@ -710,14 +737,22 @@ void showDialog(const char *message)
     dialogWindow = SDL_CreateWindow("Message",
                                     SDL_WINDOWPOS_CENTERED,
                                     SDL_WINDOWPOS_CENTERED,
-                                    300, 150,
+                                    600, 450,
                                     SDL_WINDOW_SHOWN);
     dialogRenderer = SDL_CreateRenderer(dialogWindow, -1, SDL_RENDERER_ACCELERATED);
-    font = TTF_OpenFont("./font.ttf", 16);
+    font = TTF_OpenFont("./font.ttf", 24);
+
+    if (!font)
+    {
+        printf("Failed to load font: %s\n", TTF_GetError());
+        SDL_DestroyRenderer(dialogRenderer);
+        SDL_DestroyWindow(dialogWindow);
+        return;
+    }
 
     // Create OK button
     Button okButton = {
-        .rect = {100, 90, 100, 40},
+        .rect = {250, 350, 100, 50}, // Đặt nút OK ở giữa dưới cùng
         .text = "OK",
         .isHovered = false};
 
@@ -741,23 +776,24 @@ void showDialog(const char *message)
             }
         }
 
-        // Render
+        // Render dialog background
         SDL_SetRenderDrawColor(dialogRenderer, 240, 240, 240, 255);
         SDL_RenderClear(dialogRenderer);
 
         // Render message
         SDL_Color textColor = {0, 0, 0, 255};
-        SDL_Surface *surface = TTF_RenderText_Solid(font, message, textColor);
+        SDL_Surface *surface = TTF_RenderText_Blended_Wrapped(font, message, textColor, 560); // Bọc văn bản trong 560px
         if (surface)
         {
             SDL_Texture *texture = SDL_CreateTextureFromSurface(dialogRenderer, surface);
             if (texture)
             {
                 SDL_Rect textRect = {
-                    150 - surface->w / 2, // Center horizontally
-                    30,                   // Fixed vertical position
+                    20, // Cách viền trái 20px
+                    100,
                     surface->w,
                     surface->h};
+
                 SDL_RenderCopy(dialogRenderer, texture, NULL, &textRect);
                 SDL_DestroyTexture(texture);
             }
@@ -782,7 +818,7 @@ void initGameUI(GameUI *ui)
     ui->window = SDL_CreateWindow("Duoi Hinh Bat Chu",
                                   SDL_WINDOWPOS_CENTERED,
                                   SDL_WINDOWPOS_CENTERED,
-                                  1366, 768,
+                                  1280, 720,
                                   SDL_WINDOW_SHOWN);
     ui->renderer = SDL_CreateRenderer(ui->window, -1, SDL_RENDERER_ACCELERATED);
     ui->font = TTF_OpenFont("./font.ttf", 24);
@@ -806,10 +842,31 @@ void initGameUI(GameUI *ui)
         .text = "Answer",
         .isHovered = false};
 
+    ui->chatUI.chatInput = (TextInput){
+        .rect = {970, 600, 200, 40}, // Vị trí và kích thước của ô nhập tin nhắn
+        .text = "",                  // Chuỗi trống ban đầu cho chat input
+        .isSelected = false,         // Ban đầu không chọn
+        .isPassword = false          // Không phải là mật khẩu
+    };
+
+    // Khởi tạo nút Send cho ChatInput
+    ui->chatUI.sendButton = (Button){
+        .rect = {1100, 600, 100, 40}, // Vị trí của nút send
+        .text = "Send",               // Văn bản trên nút
+        .isHovered = false            // Ban đầu không hover
+    };
+
+    // Khởi tạo vùng hiển thị tin nhắn
+    ui->chatUI.chatBoxRect = (SDL_Rect){970, 200, 230, 400}; // Vị trí và kích thước vùng hiển thị tin nhắn
+
+    // Số lượng tin nhắn ban đầu
+    ui->chatUI.chatMessageCount = 0;
+    memset(ui->chatUI.currentInput, 0, sizeof(ui->chatUI.currentInput));
+
     // Initialize scores and player info
-    strcpy(ui->playerList[0], "User 1     Score: 0");
-    strcpy(ui->playerList[1], "User 2     Score: 0");
-    strcpy(ui->playerList[2], "User 3     Score: 0");
+    strcpy(ui->playerList[0], "User 1  Score: 0");
+    strcpy(ui->playerList[1], "User 2  Score: 0");
+    strcpy(ui->playerList[2], "User 3  Score: 0");
 }
 
 void renderGameUI(GameUI *ui)
@@ -821,6 +878,8 @@ void renderGameUI(GameUI *ui)
     SDL_Rect questionArea = {50, 50, 900, 500};
     SDL_SetRenderDrawColor(ui->renderer, 0, 0, 0, 255);
     SDL_RenderDrawRect(ui->renderer, &questionArea);
+
+    renderChatUI(ui);
 
     // Draw question image or placeholder text
     if (!ui->questionImage)
@@ -954,9 +1013,6 @@ void handleGameUI()
 
                             if (sscanf(token, "%127[^,],%d", username, &score) == 2)
                             {
-                                // Debug print to check what we're receiving
-                                printf("Updating score for %s: %d\n", username, score);
-
                                 char temp[256];
                                 snprintf(temp, sizeof(temp), "%-20s Score: %d", username, score);
                                 strncpy(ui.playerList[player_idx], temp, sizeof(ui.playerList[player_idx]) - 1);
@@ -979,6 +1035,67 @@ void handleGameUI()
                         renderFinalScreen(ui.window, ui.renderer, ui.font, buffer);
                         quit = true; // Exit the game loop after final screen
                     }
+                    else if (buffer[0] == CHAT_BROADCAST)
+                    {
+                        char *message = buffer + 1;
+                        // Receive and display chat message
+                        while (*message)
+                        {
+                            char chunk[19] = ""; // Tối đa 10 ký tự + 1 ký tự null
+                            char *spacePos = NULL;
+                            int length = strlen(message);
+
+                            // Nếu tin nhắn dài hơn 10 ký tự, tách tại dấu cách gần nhất trước ký tự thứ 10
+                            if (length > 18)
+                            {
+                                for (int i = 0; i < 18; i++)
+                                {
+                                    if (message[i] == ' ')
+                                    {
+                                        spacePos = &message[i];
+                                    }
+                                }
+
+                                // Nếu tìm được dấu cách, tách tại vị trí đó
+                                if (spacePos != NULL)
+                                {
+                                    int chunkLength = spacePos - message + 1;
+                                    strncpy(chunk, message, chunkLength);
+                                    chunk[chunkLength] = '\0'; // Kết thúc chuỗi
+                                    message += chunkLength;    // Dịch con trỏ bắt đầu
+                                }
+                                else
+                                {
+                                    // Không tìm thấy dấu cách, tách thẳng 10 ký tự
+                                    strncpy(chunk, message, 10);
+                                    chunk[10] = '\0';
+                                    message += 10;
+                                }
+                            }
+                            else
+                            {
+                                // Nếu tin nhắn nhỏ hơn 10 ký tự, thêm toàn bộ
+                                strcpy(chunk, message);
+                                message += length;
+                            }
+
+                            // Thêm đoạn vào danh sách chat
+                            if (ui.chatUI.chatMessageCount < 10)
+                            {
+                                strncpy(ui.chatUI.chatMessages[ui.chatUI.chatMessageCount], chunk, 255);
+                                ui.chatUI.chatMessageCount++;
+                            }
+                            else
+                            {
+                                // Dịch các tin nhắn cũ lên trên, loại bỏ tin nhắn đầu tiên
+                                for (int i = 1; i < 10; i++)
+                                {
+                                    strncpy(ui.chatUI.chatMessages[i - 1], ui.chatUI.chatMessages[i], 255);
+                                }
+                                strncpy(ui.chatUI.chatMessages[9], chunk, 255);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -994,7 +1111,23 @@ void handleGameUI()
                 int mouseX, mouseY;
                 SDL_GetMouseState(&mouseX, &mouseY);
 
-                if (bell_status == 1)
+                ui.chatUI.chatInput.isSelected = isMouseOverRect(&ui.chatUI.chatInput.rect, mouseX, mouseY);
+
+                if (isMouseOverRect(&ui.chatUI.sendButton.rect, mouseX, mouseY))
+                {
+                    if (strlen(ui.chatUI.currentInput) > 0)
+                    {
+                        // Gửi toàn bộ tin nhắn tới server
+                        memset(buffer, 0, BUFFER_SIZE);
+                        buffer[0] = CHAT_MESSAGE;
+                        snprintf(buffer + 1, BUFFER_SIZE - 1, "%s", ui.chatUI.currentInput);
+                        send(sockfd, buffer, BUFFER_SIZE, 0);
+
+                        // Xóa nội dung nhập sau khi gửi
+                        memset(ui.chatUI.currentInput, 0, sizeof(ui.chatUI.currentInput));
+                    }
+                }
+                else if (bell_status == 1)
                 {
                     ui.answerInput.isSelected = isMouseOverRect(&ui.answerInput.rect, mouseX, mouseY);
 
@@ -1021,21 +1154,44 @@ void handleGameUI()
                     }
                 }
             }
-            else if (e.type == SDL_TEXTINPUT && ui.answerInput.isSelected && bell_status == 1)
+            else if (e.type == SDL_TEXTINPUT)
             {
-                if (strlen(ui.answerInput.text) < 255)
+                // Kiểm tra xem inputBox có được chọn không và đảm bảo chiều dài không vượt quá 255
+                if (ui.chatUI.chatInput.isSelected && strlen(ui.chatUI.currentInput) < 255)
                 {
-                    strcat(ui.answerInput.text, e.text.text);
+                    strncat(ui.chatUI.currentInput, e.text.text, 255 - strlen(ui.chatUI.currentInput));
+                }
+                // Kiểm tra cho answerInput
+                else if (ui.answerInput.isSelected && bell_status == 1 && strlen(ui.answerInput.text) < 255)
+                {
+                    if (strlen(ui.answerInput.text) + strlen(e.text.text) < 255)
+                    {
+                        strcat(ui.answerInput.text, e.text.text);
+                    }
                 }
             }
-            else if (e.type == SDL_KEYDOWN && bell_status == 1)
+            else if (e.type == SDL_KEYDOWN)
             {
-                if (e.key.keysym.sym == SDLK_BACKSPACE && ui.answerInput.isSelected)
+                // Kiểm tra phím BACKSPACE
+                if (e.key.keysym.sym == SDLK_BACKSPACE)
                 {
-                    int len = strlen(ui.answerInput.text);
-                    if (len > 0)
+                    // Xử lý khi BACKSPACE trong chatInput
+                    if (ui.chatUI.chatInput.isSelected)
                     {
-                        ui.answerInput.text[len - 1] = '\0';
+                        int len = strlen(ui.chatUI.currentInput);
+                        if (len > 0)
+                        {
+                            ui.chatUI.currentInput[len - 1] = '\0'; // Xóa ký tự cuối cùng
+                        }
+                    }
+                    // Xử lý khi BACKSPACE trong answerInput
+                    else if (ui.answerInput.isSelected && bell_status == 1)
+                    {
+                        int len = strlen(ui.answerInput.text);
+                        if (len > 0)
+                        {
+                            ui.answerInput.text[len - 1] = '\0'; // Xóa ký tự cuối cùng
+                        }
                     }
                 }
             }
@@ -1052,6 +1208,52 @@ void handleGameUI()
     TTF_CloseFont(ui.font);
     SDL_DestroyRenderer(ui.renderer);
     SDL_DestroyWindow(ui.window);
+}
+
+void renderChatUI(GameUI *ui)
+{
+    // Vẽ nền cho chat box
+    SDL_SetRenderDrawColor(ui->renderer, 255, 255, 255, 255); // Màu trắng
+    SDL_RenderFillRect(ui->renderer, &ui->chatUI.chatBoxRect);
+    SDL_SetRenderDrawColor(ui->renderer, 0, 0, 0, 255); // Viền đen
+    SDL_RenderDrawRect(ui->renderer, &ui->chatUI.chatBoxRect);
+
+    // Hiển thị tin nhắn trong chat
+    SDL_Color textColor = {0, 0, 0, 255};
+    for (int i = 0; i < ui->chatUI.chatMessageCount; i++)
+    {
+        SDL_Surface *surface = TTF_RenderText_Solid(ui->font, ui->chatUI.chatMessages[i], textColor);
+        if (surface)
+        {
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(ui->renderer, surface);
+            SDL_Rect textRect = {ui->chatUI.chatBoxRect.x + 10, ui->chatUI.chatBoxRect.y + 10 + i * 30, surface->w, surface->h};
+            SDL_RenderCopy(ui->renderer, texture, NULL, &textRect);
+            SDL_DestroyTexture(texture);
+            SDL_FreeSurface(surface);
+        }
+    }
+
+    // Vẽ ô nhập liệu và nút gửi
+    renderTextInput(ui->renderer, ui->font, &ui->chatUI.chatInput, true);
+    renderButton(ui->renderer, ui->font, &ui->chatUI.sendButton, true);
+
+    // Display current input text
+    if (strlen(ui->chatUI.currentInput) > 0)
+    {
+        SDL_Surface *inputSurface = TTF_RenderText_Solid(ui->font, ui->chatUI.currentInput, textColor);
+        if (inputSurface)
+        {
+            SDL_Texture *inputTexture = SDL_CreateTextureFromSurface(ui->renderer, inputSurface);
+            SDL_Rect inputRect = {
+                ui->chatUI.chatInput.rect.x + 5,                                                   // Add small padding from left
+                ui->chatUI.chatInput.rect.y + (ui->chatUI.chatInput.rect.h - inputSurface->h) / 2, // Center vertically
+                inputSurface->w,
+                inputSurface->h};
+            SDL_RenderCopy(ui->renderer, inputTexture, NULL, &inputRect);
+            SDL_DestroyTexture(inputTexture);
+            SDL_FreeSurface(inputSurface);
+        }
+    }
 }
 
 void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *font, const char *buffer)
@@ -1115,7 +1317,7 @@ void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *fon
             if (texture)
             {
                 SDL_Rect titleRect = {
-                    (1024 - surface->w) / 2, // Center horizontally
+                    (1280 - surface->w) / 2, // Center horizontally
                     50,                      // Top margin
                     surface->w,
                     surface->h};
@@ -1128,7 +1330,7 @@ void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *fon
         // Define dashboard layout
         const int startY = 200;
         const int spacing = 150;
-        const int centerX = 1024 / 2;
+        const int centerX = 1280 / 2;
 
         // Render each player's score in a dashboard layout
         for (int i = 0; i < 3; i++)
@@ -1137,10 +1339,10 @@ void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *fon
             {
                 // Create score box
                 SDL_Rect scoreBox = {
-                    centerX - 300 + (i * 300), // Spread horizontally from center
-                    startY,                    // Fixed vertical position
-                    200,                       // Box width
-                    100                        // Box height
+                    centerX - 100, // Spread horizontally from center
+                    startY,        // Fixed vertical position
+                    200,           // Box width
+                    100            // Box height
                 };
 
                 // Draw score box border
@@ -1156,7 +1358,7 @@ void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *fon
                     {
                         SDL_Rect userRect = {
                             scoreBox.x + (scoreBox.w - surface->w) / 2, // Center in box
-                            scoreBox.y + 20,
+                            scoreBox.y + 30,
                             surface->w,
                             surface->h};
                         SDL_RenderCopy(renderer, texture, NULL, &userRect);
@@ -1166,24 +1368,24 @@ void renderFinalScreen(SDL_Window *window, SDL_Renderer *renderer, TTF_Font *fon
                 }
 
                 // Render score
-                char scoreText[32];
-                snprintf(scoreText, sizeof(scoreText), "Score: %d", players[i].score);
-                surface = TTF_RenderText_Solid(font, scoreText, textColor);
-                if (surface)
-                {
-                    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-                    if (texture)
-                    {
-                        SDL_Rect scoreRect = {
-                            scoreBox.x + (scoreBox.w - surface->w) / 2, // Center in box
-                            scoreBox.y + 60,
-                            surface->w,
-                            surface->h};
-                        SDL_RenderCopy(renderer, texture, NULL, &scoreRect);
-                        SDL_DestroyTexture(texture);
-                    }
-                    SDL_FreeSurface(surface);
-                }
+                // char scoreText[32];
+                // snprintf(scoreText, sizeof(scoreText), "Score: %d", players[i].score);
+                // surface = TTF_RenderText_Solid(font, scoreText, textColor);
+                // if (surface)
+                // {
+                //     SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+                //     if (texture)
+                //     {
+                //         SDL_Rect scoreRect = {
+                //             scoreBox.x + (scoreBox.w - surface->w) / 2, // Center in box
+                //             scoreBox.y + 60,
+                //             surface->w,
+                //             surface->h};
+                //         SDL_RenderCopy(renderer, texture, NULL, &scoreRect);
+                //         SDL_DestroyTexture(texture);
+                //     }
+                //     SDL_FreeSurface(surface);
+                // }
             }
         }
 
